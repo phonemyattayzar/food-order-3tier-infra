@@ -1,0 +1,55 @@
+# ==============================================================================
+# Example Terraform Configuration Variables
+# ==============================================================================
+# Copy this file to terraform.tfvars and customize for your deployment:
+# cp terraform.tfvars.example terraform.tfvars
+# ==============================================================================
+
+aws_region   = "ap-southeast-1"
+project_name = "food-order-3tier"
+environment  = "prod"
+
+# Network CIDRs across 2 Availability Zones
+vpc_cidr                 = "10.0.0.0/16"
+availability_zones       = ["ap-southeast-1a", "ap-southeast-1b"]
+public_subnet_cidrs      = ["10.0.1.0/24", "10.0.2.0/24"]
+private_app_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+private_db_subnet_cidrs  = ["10.0.21.0/24", "10.0.22.0/24"]
+
+# Application and ALB Target Group Configuration
+app_port          = 8000
+health_check_path = "/api/v1"
+
+# Compute (EC2 Auto Scaling Group)
+ec2_instance_type    = "t3.micro"
+asg_min_size         = 2
+asg_max_size         = 4
+asg_desired_capacity = 2
+
+# AWS ECR Container Registry
+ecr_repository_name = "food-order-api" # Leave empty to auto-generate from project_name
+ecr_repository_url  = ""               # Optional override: leave empty to use auto-provisioned ECR repository
+app_image_tag       = "latest"
+
+# Database (Multi-AZ RDS PostgreSQL)
+db_port                    = 5432
+db_engine                  = "postgres"
+db_engine_version          = "15.7"
+db_instance_class          = "db.t4g.micro"
+db_allocated_storage       = 20
+db_max_allocated_storage   = 100
+db_name                    = "food_db"
+db_username                = "dbadmin"
+db_backup_retention_period = 7
+
+# Frontend (CloudFront + S3)
+frontend_bucket_name   = "" # Leave empty to auto-generate unique name
+frontend_force_destroy = true
+cloudfront_price_class = "PriceClass_100"
+enable_alb_api_routing = true
+
+# Backend Security & Authentication (SSM Parameter Store)
+secret_key                      = ""       # Leave empty to automatically generate random 64-char key in SSM
+jwt_algorithm                   = "HS256"
+jwt_access_token_expire_minutes = 11520
+
