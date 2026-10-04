@@ -177,7 +177,7 @@ variable "db_engine" {
 variable "db_engine_version" {
   description = "Database engine major/minor version"
   type        = string
-  default     = "15.7"
+  default     = "15"
 }
 
 variable "db_instance_class" {
