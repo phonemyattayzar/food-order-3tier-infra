@@ -269,8 +269,118 @@ food-order-3tier-infra/
 
 ---
 
-## 🔄 Repository Separation
+🔄 Repository Separation
 
 The application and infrastructure are intentionally separated:
+
+GitHub
+│
+├── food-order-3tier-aws
+│   │
+│   ├── Backend
+│   ├── Frontend
+│   ├── Docker
+│   └── Application CI/CD
+│
+└── food-order-3tier-infra
+    │
+    ├── Terraform
+    ├── AWS Infrastructure
+    └── Infrastructure CI/CD
+
+This separation means:
+
+Application changes do not require Terraform changes.
+Infrastructure changes do not require rebuilding the application.
+Application CI/CD handles Docker/ECR/ASG deployment.
+Infrastructure CI/CD handles Terraform.
+Terraform state remains in the S3 backend.
+Infrastructure source code is version-controlled independently.
+🚀 3. Infrastructure Deployment Flow
+Developer
+    │
+    ▼
+food-order-3tier-infra
+    │
+    ▼
+Terraform
+    │
+    ├── terraform fmt
+    ├── terraform validate
+    ├── terraform plan
+    └── terraform apply
+            │
+            ▼
+       AWS Infrastructure
+
+Application deployment is handled separately:
+
+Developer
+    │
+    ▼
+food-order-3tier-aws
+    │
+    ├───────────────┐
+    │               │
+    ▼               ▼
+Backend           Frontend
+    │               │
+    ▼               ▼
+Docker/ECR       Vite Build
+    │               │
+    ▼               ▼
+ASG Refresh      S3 Upload
+                    │
+                    ▼
+               CloudFront
+🗄️ Terraform Remote State
+
+Terraform state is stored remotely in Amazon S3:
+
+S3 Bucket:
+food-order-tfstate-<ACCOUNT_ID>-ap-southeast-1
+
+State Key:
+networking/terraform.tfstate
+
+Lock:
+networking/terraform.tfstate.tflock
+
+The backend uses native S3 state locking:
+
+terraform {
+  required_version = ">= 1.10.0"
+
+  backend "s3" {
+    bucket       = "food-order-tfstate-<ACCOUNT_ID>-ap-southeast-1"
+    key          = "networking/terraform.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}
+
+No DynamoDB table is required for state locking.
+
+⚠️ Important
+
+The Terraform state must not be committed to Git.
+
+The following files/directories should remain ignored:
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.auto.tfvars
+
+The following files should be committed:
+
+*.tf
+terraform.tfvars.example
+.terraform.lock.hcl
+.gitignore
+README.md
 
 ``
