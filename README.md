@@ -269,10 +269,11 @@ food-order-3tier-infra/
 
 ---
 
-🔄 Repository Separation
+## 🔄 Repository Separation
 
 The application and infrastructure are intentionally separated:
 
+```text
 GitHub
 │
 ├── food-order-3tier-aws
@@ -287,16 +288,22 @@ GitHub
     ├── Terraform
     ├── AWS Infrastructure
     └── Infrastructure CI/CD
+```
 
 This separation means:
 
-Application changes do not require Terraform changes.
-Infrastructure changes do not require rebuilding the application.
-Application CI/CD handles Docker/ECR/ASG deployment.
-Infrastructure CI/CD handles Terraform.
-Terraform state remains in the S3 backend.
-Infrastructure source code is version-controlled independently.
-🚀 3. Infrastructure Deployment Flow
+* Application changes do not require Terraform changes.
+* Infrastructure changes do not require rebuilding the application.
+* Application CI/CD handles Docker/ECR/ASG deployment.
+* Infrastructure CI/CD handles Terraform.
+* Terraform state remains in the S3 backend.
+* Infrastructure source code is version-controlled independently.
+
+---
+
+## 🚀 3. Infrastructure Deployment Flow
+
+```text
 Developer
     │
     ▼
@@ -312,9 +319,11 @@ Terraform
             │
             ▼
        AWS Infrastructure
+```
 
 Application deployment is handled separately:
 
+```text
 Developer
     │
     ▼
@@ -333,10 +342,15 @@ ASG Refresh      S3 Upload
                     │
                     ▼
                CloudFront
-🗄️ Terraform Remote State
+```
+
+---
+
+## 🗄️ Terraform Remote State
 
 Terraform state is stored remotely in Amazon S3:
 
+```text
 S3 Bucket:
 food-order-tfstate-<ACCOUNT_ID>-ap-southeast-1
 
@@ -345,9 +359,11 @@ networking/terraform.tfstate
 
 Lock:
 networking/terraform.tfstate.tflock
+```
 
 The backend uses native S3 state locking:
 
+```hcl
 terraform {
   required_version = ">= 1.10.0"
 
@@ -359,28 +375,33 @@ terraform {
     use_lockfile = true
   }
 }
+```
 
 No DynamoDB table is required for state locking.
 
-⚠️ Important
+---
 
-The Terraform state must not be committed to Git.
+## ⚠️ Important
+
+The Terraform state **must not** be committed to Git.
 
 The following files/directories should remain ignored:
 
+```text
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
 terraform.tfvars
 *.auto.tfvars
+```
 
-The following files should be committed:
+The following files **should be committed**:
 
+```text
 *.tf
 terraform.tfvars.example
 .terraform.lock.hcl
 .gitignore
 README.md
-
-``
+```
