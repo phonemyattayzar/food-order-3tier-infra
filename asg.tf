@@ -142,54 +142,53 @@ resource "aws_launch_template" "this" {
 
   # Cloud-init User Data Script: Installs Docker, fetches SSM parameters, and launches container
   user_data = base64encode(<<-EOF
-    #!/bin/bash
-    exec > /var/log/user-data.log 2>&1
-    set -x
+#!/bin/bash
+exec > /var/log/user-data.log 2>&1
+set -x
 
-    echo "==> Updating packages and installing Docker & AWS CLI..."
-    dnf update -y
-    dnf install -y docker aws-cli
-    systemctl enable --now docker
-    usermod -aG docker ec2-user
+echo "==> Installing Docker & AWS CLI..."
+dnf install -y docker aws-cli
+systemctl enable --now docker
+usermod -aG docker ec2-user
 
-    REGION="${var.aws_region}"
-    ECR_URL="${var.ecr_repository_url != "" ? var.ecr_repository_url : aws_ecr_repository.app.repository_url}"
-    IMAGE_TAG="${var.app_image_tag}"
-    APP_PORT="${var.app_port}"
-    SSM_PREFIX="/${var.project_name}/${var.environment}"
-    ENV_FILE="/etc/food_api.env"
+REGION="${var.aws_region}"
+ECR_URL="${var.ecr_repository_url != "" ? var.ecr_repository_url : aws_ecr_repository.app.repository_url}"
+IMAGE_TAG="${var.app_image_tag}"
+APP_PORT="${var.app_port}"
+SSM_PREFIX="/${var.project_name}/${var.environment}"
+ENV_FILE="/etc/food_api.env"
 
-    echo "==> Waiting for AWS IAM credentials..."
-    for i in {1..15}; do
-      if aws sts get-caller-identity --region "$REGION" >/dev/null 2>&1; then
-        echo "==> AWS IAM credentials confirmed."
-        break
-      fi
-      sleep 2
-    done
+echo "==> Waiting for AWS IAM credentials..."
+for i in {1..15}; do
+  if aws sts get-caller-identity --region "$REGION" >/dev/null 2>&1; then
+    echo "==> AWS IAM credentials confirmed."
+    break
+  fi
+  sleep 2
+done
 
-    echo "==> Fetching application credentials from AWS SSM Parameter Store ($SSM_PREFIX)..."
+echo "==> Fetching application credentials from AWS SSM Parameter Store ($SSM_PREFIX)..."
 
-    get_ssm_val() {
-      aws ssm get-parameter --name "$1" --with-decryption --region "$REGION" --query "Parameter.Value" --output text 2>/dev/null || echo ""
-    }
+get_ssm_val() {
+  aws ssm get-parameter --name "$1" --with-decryption --region "$REGION" --query "Parameter.Value" --output text 2>/dev/null || echo ""
+}
 
-    DATABASE_URL=$(get_ssm_val "$SSM_PREFIX/DATABASE_URL")
-    POSTGRES_USER=$(get_ssm_val "$SSM_PREFIX/POSTGRES_USER")
-    POSTGRES_PASSWORD=$(get_ssm_val "$SSM_PREFIX/POSTGRES_PASSWORD")
-    POSTGRES_DB=$(get_ssm_val "$SSM_PREFIX/POSTGRES_DB")
-    POSTGRES_HOST=$(get_ssm_val "$SSM_PREFIX/POSTGRES_HOST")
-    POSTGRES_PORT=$(get_ssm_val "$SSM_PREFIX/POSTGRES_PORT")
-    SECRET_KEY=$(get_ssm_val "$SSM_PREFIX/SECRET_KEY")
-    ALGORITHM=$(get_ssm_val "$SSM_PREFIX/ALGORITHM")
-    ACCESS_TOKEN_EXPIRE_MINUTES=$(get_ssm_val "$SSM_PREFIX/ACCESS_TOKEN_EXPIRE_MINUTES")
+DATABASE_URL=$(get_ssm_val "$SSM_PREFIX/DATABASE_URL")
+POSTGRES_USER=$(get_ssm_val "$SSM_PREFIX/POSTGRES_USER")
+POSTGRES_PASSWORD=$(get_ssm_val "$SSM_PREFIX/POSTGRES_PASSWORD")
+POSTGRES_DB=$(get_ssm_val "$SSM_PREFIX/POSTGRES_DB")
+POSTGRES_HOST=$(get_ssm_val "$SSM_PREFIX/POSTGRES_HOST")
+POSTGRES_PORT=$(get_ssm_val "$SSM_PREFIX/POSTGRES_PORT")
+SECRET_KEY=$(get_ssm_val "$SSM_PREFIX/SECRET_KEY")
+ALGORITHM=$(get_ssm_val "$SSM_PREFIX/ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES=$(get_ssm_val "$SSM_PREFIX/ACCESS_TOKEN_EXPIRE_MINUTES")
 
-    [ -z "$POSTGRES_PORT" ] && POSTGRES_PORT="5432"
-    [ -z "$ALGORITHM" ] && ALGORITHM="HS256"
-    [ -z "$ACCESS_TOKEN_EXPIRE_MINUTES" ] && ACCESS_TOKEN_EXPIRE_MINUTES="11520"
+[ -z "$POSTGRES_PORT" ] && POSTGRES_PORT="5432"
+[ -z "$ALGORITHM" ] && ALGORITHM="HS256"
+[ -z "$ACCESS_TOKEN_EXPIRE_MINUTES" ] && ACCESS_TOKEN_EXPIRE_MINUTES="11520"
 
-    echo "==> Writing $ENV_FILE..."
-    cat <<ENV > "$ENV_FILE"
+echo "==> Writing $ENV_FILE..."
+cat <<ENV > "$ENV_FILE"
 DATABASE_URL=$DATABASE_URL
 POSTGRES_USER=$POSTGRES_USER
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
@@ -200,37 +199,37 @@ SECRET_KEY=$SECRET_KEY
 ALGORITHM=$ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES=$ACCESS_TOKEN_EXPIRE_MINUTES
 ENV
-    chmod 600 "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 
-    if [ -n "$ECR_URL" ]; then
-      echo "==> Authenticating Docker to AWS ECR..."
-      aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_URL" || true
+if [ -n "$ECR_URL" ]; then
+  echo "==> Authenticating Docker to AWS ECR..."
+  aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_URL" || true
 
-      echo "==> Attempting to pull application image: $ECR_URL:$IMAGE_TAG..."
-      if docker pull "$ECR_URL:$IMAGE_TAG"; then
-        echo "==> Starting food_api container..."
-        docker run -d \
-          --name food_api \
-          --restart unless-stopped \
-          --env-file "$ENV_FILE" \
-          -p "$APP_PORT:8000" \
-          "$ECR_URL:$IMAGE_TAG"
+  echo "==> Attempting to pull application image: $ECR_URL:$IMAGE_TAG..."
+  if docker pull "$ECR_URL:$IMAGE_TAG"; then
+    echo "==> Starting food_api container..."
+    docker run -d \
+      --name food_api \
+      --restart unless-stopped \
+      --env-file "$ENV_FILE" \
+      -p "$APP_PORT:8000" \
+      "$ECR_URL:$IMAGE_TAG"
 
-        echo "==> Running database migrations..."
-        sleep 5
-        docker exec food_api alembic upgrade head || echo "==> Migration check completed."
-      else
-        echo "==> Image not found in ECR yet. Starting placeholder container..."
-        docker run -d \
-          --name placeholder_api \
-          --restart unless-stopped \
-          -p "$APP_PORT:80" \
-          nginxdemos/hello:latest
-      fi
-    fi
+    echo "==> Running database migrations..."
+    sleep 5
+    docker exec food_api alembic upgrade head || echo "==> Migration check completed."
+  else
+    echo "==> Image not found in ECR yet. Starting placeholder container..."
+    docker run -d \
+      --name placeholder_api \
+      --restart unless-stopped \
+      -p "$APP_PORT:80" \
+      nginxdemos/hello:latest
+  fi
+fi
 
-    echo "==> Startup sequence completed successfully."
-  EOF
+echo "==> Startup sequence completed successfully."
+EOF
   )
 
   tag_specifications {
