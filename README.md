@@ -344,6 +344,60 @@ ASG Refresh      S3 Upload
                CloudFront
 ```
 
+## 🤖 4. GitHub Actions ဖြင့် Terraform CI/CD
+
+ဒီ repository မှာ PR ဖွင့်တဲ့အခါ Plan စစ်ဆေးပြီး၊ `main` ထဲ merge ဖြစ်တဲ့အခါ Apply လုပ်တဲ့ workflow နှစ်ခု ပါဝင်ပါတယ်။
+
+```text
+Feature branch push
+        │
+        ▼
+Pull Request ဖွင့်
+        │
+        ├── terraform fmt / init / validate / plan
+        └── Plan ရလဒ်ကို PR comment နှင့် Actions Summary တွင်ပြ
+                    │
+                    ▼
+             လူက Plan နှင့် Code ကို review
+                    │
+                    ▼
+               main သို့ merge
+                    │
+                    ▼
+      production Environment approval (သတ်မှတ်ထားလျှင်)
+                    │
+                    ▼
+       အသစ်ပြန် plan လုပ်ပြီး terraform apply
+```
+
+### Workflow ဖိုင်များ
+
+* `.github/workflows/terraform-plan.yml` — `main` ကို target လုပ်သော PR တွင် Terraform format, initialize, validate, plan ကို run လုပ်ပြီး ရလဒ်ကို PR comment ရေးပေးသည်။ Same-repository PR များသာ AWS OIDC credentials ရယူနိုင်သည်။
+* `.github/workflows/terraform-apply.yml` — Terraform ဖိုင်များပြောင်းလဲပြီး `main` သို့ push/merge ဖြစ်သောအခါ `production` Environment အောက်တွင် plan အသစ်ပြန်လုပ်ပြီး `terraform apply -auto-approve` ကို run လုပ်သည်။ Merge လုပ်ချိန်က PR plan ကို တိုက်ရိုက်အသုံးမပြုဘဲ လက်ရှိ state နှင့် code အပေါ် plan အသစ်ထုတ်သည်။
+
+Workflow နှစ်ခုစလုံးမှာ Terraform input အဖြစ် `terraform.tfvars.example` ကိုသုံးသည်။ အဲဒီဖိုင်ထဲက တန်ဖိုးများကို အမှန်တကယ် deployment အတွက် ပြင်ဆင်ပြီး commit လုပ်ပါ။ Local `terraform.tfvars` သည် `.gitignore` ထဲတွင်ရှိသောကြောင့် GitHub Runner သို့ မတက်ပါ။ Secret တန်ဖိုးများကို tfvars ထဲ မထည့်ပါနှင့်။
+
+### GitHub နှင့် AWS တစ်ကြိမ်တည်း ပြင်ဆင်ရန်
+
+1. AWS IAM မှာ GitHub Actions အတွက် **OIDC Identity Provider** (`token.actions.githubusercontent.com`) နှင့် IAM Role တစ်ခု ဖန်တီးပါ။ Role trust policy ရဲ့ audience ကို `sts.amazonaws.com` သတ်မှတ်ပြီး subject ကို သင့် repo အတွက် ကန့်သတ်ပါ။ ဤ workflow များအတွက် subject များမှာ `repo:OWNER/REPO:pull_request` နှင့် `repo:OWNER/REPO:ref:refs/heads/main` ဖြစ်သည်။ `OWNER/REPO` ကို သင့် GitHub လိပ်စာနှင့် အစားထိုးပါ။
+2. ထို IAM Role ကို Terraform plan အတွက် AWS resources ကို ဖတ်ရှုနိုင်ရန်၊ S3 backend state နှင့် `.tflock` ကို အသုံးပြုနိုင်ရန် လိုအပ်သည့်အခွင့်အရေးများ ပေးပါ။ Apply အတွက် သတ်မှတ်ထားသော infrastructure ကို ပြောင်းလဲရန် လိုအပ်သည့်အခွင့်အရေးများ ထပ်ပေးပါ။ Backend S3 bucket ကို workflow မစမီ ရှိပြီးသားဖြစ်ရမည်။
+3. GitHub repository ၏ **Settings → Secrets and variables → Actions → Variables** တွင် အောက်ပါတို့ သတ်မှတ်ပါ။
+
+   * `AWS_TERRAFORM_ROLE_ARN` — အဆင့် ၁ မှ IAM Role ARN
+   * `AWS_REGION` — `ap-southeast-1` (မသတ်မှတ်လျှင် workflow က ဒီတန်ဖိုးကို default သုံးသည်)
+
+4. **Settings → Environments** တွင် `production` Environment ဖန်တီးပြီး လိုအပ်ပါက **Required reviewers** ထည့်ပါ။ Reviewer approval လိုအပ်လျှင် merge ပြီးနောက် apply job သည် approval ရသည်အထိ စောင့်မည်။
+5. **Settings → Branches** တွင် `main` အတွက် branch protection သတ်မှတ်ပြီး PR review နှင့် `plan` check အောင်မြင်မှုကို merge လုပ်ရန် မဖြစ်မနေလိုအပ်အောင် ပြင်ဆင်ပါ။
+
+### လက်တွေ့အသုံးပြုပုံ
+
+1. `feature/...` branch အသစ်ဖန်တီးပြီး `.tf` ဖိုင်များ သို့မဟုတ် `terraform.tfvars.example` ကို ပြင်ပါ။
+2. Push လုပ်ပြီး `main` သို့ PR ဖွင့်ပါ။ `Terraform Plan` workflow အောင်မြင်ပြီးနောက် PR comment ထဲက add/change/destroy အရေအတွက်နှင့် resource အသေးစိတ်ကို စစ်ပါ။
+3. Reviewer က Terraform code နှင့် AWS ပြောင်းလဲမည့်အရာများကို စစ်ဆေးပြီး approve လုပ်ကာ PR ကို merge လုပ်ပါ။
+4. Merge-ийн дараа `Terraform Apply` workflow ажилပြီး `production` approval လိုအပ်ပါက approver က အရင်အတည်ပြုရပါမည်။ အောင်မြင်လျှင် AWS infrastructure ပြောင်းလဲသွားပါမည်။
+
+> `-auto-approve` သည် လူကို `yes` ဟု ရိုက်ခိုင်းမှုကိုသာ ဖယ်ရှားခြင်းဖြစ်သည်။ Review နှင့် Environment approval တို့ကို အစားမထိုးပါ။ AWS IAM permissions နှင့် GitHub OIDC trust ကို သင့် repository နှင့် လိုအပ်သည့် resources များအတွက်သာ ကန့်သတ်ပါ။
+
 ---
 
 ## 🗄️ Terraform Remote State
